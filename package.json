@@ -1,0 +1,14 @@
+{
+  "name": "sc2node",
+  "version": "0.1.0",
+  "description": "SC2 API in Node for AI purposes",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "thenanox@gmail.com",
+  "license": "ISC",
+  "dependencies": {
+    "google-protobuf": "^3.4.0"
+  }
+}
