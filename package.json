@@ -4,11 +4,21 @@
   "description": "SC2 API in Node for AI purposes",
   "main": "index.js",
   "scripts": {
+    "dist": "node_modules\\.bin\\tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "sc2node": "bin/sc2node.js"
   },
   "author": "thenanox@gmail.com",
   "license": "ISC",
   "dependencies": {
-    "google-protobuf": "^3.4.0"
+    "google-protobuf": "^3.4.0",
+    "yargs": "^8.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^8.0.28",
+    "ts-node": "^3.3.0",
+    "typescript": "^2.5.2"
   }
 }
