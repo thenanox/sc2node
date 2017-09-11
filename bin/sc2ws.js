@@ -2,4 +2,5 @@
 
 const SC2Node = require('../dist/index.js').SC2Node;
 const result = new SC2Node();
-result.launchSC2();
+result.connectWebsocket();
+result.createGame();
