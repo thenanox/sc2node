@@ -2,9 +2,67 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const child_process_1 = require("child_process");
 const process_1 = require("process");
-const websocket = require("ws");
+const sc2api_1 = require("./protojs/sc2api");
+const WebSocket = require('ws');
+function WebSocketClient() {
+    this.number = 0; // Message number
+    this.autoReconnectInterval = 5 * 1000; // ms
+}
+WebSocketClient.prototype.open = function (url) {
+    this.url = url;
+    this.instance = new WebSocket(this.url);
+    this.instance.on('open', () => {
+        this.onopen();
+    });
+    this.instance.on('message', (data, flags) => {
+        this.number++;
+        this.onmessage(data, flags, this.number);
+    });
+    this.instance.on('close', (e) => {
+        switch (e) {
+            case 1000:// CLOSE_NORMAL
+                console.log("WebSocket: closed");
+                break;
+            default:// Abnormal closure
+                this.reconnect(e);
+                break;
+        }
+        this.onclose(e);
+    });
+    this.instance.on('error', (e) => {
+        switch (e.code) {
+            case 'ECONNREFUSED':
+                this.reconnect(e);
+                break;
+            default:
+                this.onerror(e);
+                break;
+        }
+    });
+};
+WebSocketClient.prototype.send = function (data, option) {
+    try {
+        this.instance.send(data, option);
+    }
+    catch (e) {
+        this.instance.emit('error', e);
+    }
+};
+WebSocketClient.prototype.reconnect = function (e) {
+    console.log(`WebSocketClient: retry in ${this.autoReconnectInterval}ms`, e);
+    var that = this;
+    setTimeout(function () {
+        console.log("WebSocketClient: reconnecting...");
+        that.open(that.url);
+    }, this.autoReconnectInterval);
+};
+WebSocketClient.prototype.onopen = function (e) { console.log("WebSocketClient: open", arguments); };
+WebSocketClient.prototype.onmessage = function (data, flags, number) { console.log("WebSocketClient: message", arguments); };
+WebSocketClient.prototype.onerror = function (e) { console.log("WebSocketClient: error", arguments); };
+WebSocketClient.prototype.onclose = function (e) { console.log("WebSocketClient: closed", arguments); };
 const sc2api = require("./messages/s2clientprotocol/sc2api_pb");
 const SC2PATH = process_1.env["SC2PATH"];
+const wsc = new WebSocketClient();
 class SC2Node {
     launchSC2() {
         const sc2exe = SC2PATH || "C:/Program Files (x86)/Starcraft II/";
@@ -14,59 +72,57 @@ class SC2Node {
         this.sc2.on("exit", (exit) => console.log("SC2 exited because, ", exit));
     }
     connectWebsocket() {
-        this.ws = new websocket("ws://127.0.0.1:8190/sc2api");
-        this.ws.on("open", () => console.log("Websocket opened to SC2"));
-        this.ws.on("message", (data) => {
+        wsc.open("ws://127.0.0.1:8190/sc2api");
+        wsc.onopen((e) => console.log("Websocket opened to SC2", e));
+        wsc.onmessage((data) => {
             const bytes = Array.prototype.slice.call(data, 0);
-            const resp = sc2api.Response.deserializeBinary(bytes);
-            console.log("wsdata", resp.toObject());
+            const resp = sc2api_1.SC2APIProtocol.Response.decode(bytes);
+            console.log("wsdata", resp.toJSON());
         });
-        this.ws.on("error", (error) => console.error("wserror", error));
+        wsc.onerror((error) => console.error("wserror", error));
     }
     requestPing() {
-        const request = new sc2api.Request();
-        request.setPing(new sc2api.RequestPing());
-        this.ws.send(request.serializeBinary());
+        const requestPing = new sc2api_1.SC2APIProtocol.Request({ ping: new sc2api_1.SC2APIProtocol.RequestPing() });
+        wsc.send(sc2api_1.SC2APIProtocol.Request.encode(requestPing).finish());
     }
     createGame() {
-        const request = new sc2api.Request();
-        const req = new sc2api.RequestCreateGame();
-        const p1 = new sc2api.PlayerSetup();
-        p1.setType(sc2api.PlayerType.PARTICIPANT);
-        const p2 = new sc2api.PlayerSetup();
-        p2.setType(sc2api.PlayerType.COMPUTER);
-        p2.setRace(sc2api.Race.ZERG);
-        p2.setDifficulty(sc2api.Difficulty.VERYEASY);
-        req.addPlayerSetup(p1);
-        req.addPlayerSetup(p2);
-        const localMap = new sc2api.LocalMap();
-        localMap.setMapPath("Melee/Simple64.SC2Map");
-        req.setLocalMap(localMap);
-        req.setRealtime(true);
-        request.setCreateGame(req);
-        this.ws.send(request.serializeBinary());
+        const requestCreate = new sc2api_1.SC2APIProtocol.Request({
+            createGame: new sc2api_1.SC2APIProtocol.RequestCreateGame({
+                localMap: new sc2api_1.SC2APIProtocol.LocalMap({ mapPath: "Melee/Simple64.SC2Map" }),
+                playerSetup: [
+                    new sc2api_1.SC2APIProtocol.PlayerSetup({
+                        type: sc2api_1.SC2APIProtocol.PlayerType.Participant
+                    }),
+                    new sc2api_1.SC2APIProtocol.PlayerSetup({
+                        type: sc2api_1.SC2APIProtocol.PlayerType.Computer,
+                        difficulty: sc2api_1.SC2APIProtocol.Difficulty.VeryEasy,
+                        race: sc2api_1.SC2APIProtocol.Race.Zerg
+                    })
+                ],
+                realtime: true
+            })
+        });
+        this.ws.send(sc2api_1.SC2APIProtocol.Request.encode(requestCreate).finish());
     }
     joinGame() {
-        const request = new sc2api.Request();
-        const req = new sc2api.RequestJoinGame();
-        req.setRace(sc2api.Race.TERRAN);
-        const interfaceOptions = new sc2api.InterfaceOptions();
-        interfaceOptions.setScore(true);
-        const camera = new sc2api.SpatialCameraSetup();
-        camera.setWidth(24);
-        const resolution = new sc2api.Size2DI();
-        resolution.setX(84);
-        resolution.setY(84);
-        camera.setResolution(resolution);
-        const minimap = new sc2api.Size2DI();
-        minimap.setX(64);
-        minimap.setY(64);
-        camera.setMinimapResolution(minimap);
-        interfaceOptions.setFeatureLayer(camera);
-        req.setOptions(interfaceOptions);
-        request.setJoinGame(req);
-        console.log(request.toObject());
-        this.ws.send(request.serializeBinary());
+        const requestJoin = new sc2api_1.SC2APIProtocol.Request({
+            joinGame: new sc2api_1.SC2APIProtocol.RequestJoinGame({
+                race: sc2api_1.SC2APIProtocol.Race.Terran,
+                options: new sc2api_1.SC2APIProtocol.InterfaceOptions({
+                    score: true,
+                    featureLayer: new sc2api_1.SC2APIProtocol.SpatialCameraSetup({
+                        width: 24,
+                        resolution: new sc2api_1.SC2APIProtocol.Size2DI({ x: 84, y: 84 }),
+                        minimapResolution: new sc2api_1.SC2APIProtocol.Size2DI({ x: 64, y: 64 })
+                    })
+                })
+            })
+        });
+        this.ws.send(sc2api_1.SC2APIProtocol.Request.encode(requestJoin).finish());
+    }
+    observation() {
+        const requestObservation = new sc2api_1.SC2APIProtocol.Request({ observation: new sc2api_1.SC2APIProtocol.RequestObservation() });
+        this.ws.send(sc2api_1.SC2APIProtocol.Request.encode(requestObservation).finish());
     }
 }
 exports.SC2Node = SC2Node;
