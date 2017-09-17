@@ -1,66 +1,12 @@
 import { spawn, ChildProcess } from "child_process";
 import { env } from "process";
+import { exists } from "fs";
 import { SC2APIProtocol } from "./protojs/sc2api";
-
-const WebSocket = require('ws');
-function WebSocketClient(){
-	this.number = 0;	// Message number
-	this.autoReconnectInterval = 5*1000;	// ms
-}
-WebSocketClient.prototype.open = function(url){
-	this.url = url;
-	this.instance = new WebSocket(this.url);
-	this.instance.on('open',()=>{
-		this.onopen();
-	});
-	this.instance.on('message',(data,flags)=>{
-		this.number ++;
-		this.onmessage(data,flags,this.number);
-	});
-	this.instance.on('close',(e)=>{
-		switch (e){
-		case 1000:	// CLOSE_NORMAL
-			console.log("WebSocket: closed");
-			break;
-		default:	// Abnormal closure
-			this.reconnect(e);
-			break;
-		}
-		this.onclose(e);
-	});
-	this.instance.on('error',(e)=>{
-		switch (e.code){
-		case 'ECONNREFUSED':
-			this.reconnect(e);
-			break;
-		default:
-			this.onerror(e);
-			break;
-		}
-	});
-}
-WebSocketClient.prototype.send = function(data,option){
-	try{
-		this.instance.send(data,option);
-	}catch (e){
-		this.instance.emit('error',e);
-	}
-}
-WebSocketClient.prototype.reconnect = function(e){
-	console.log(`WebSocketClient: retry in ${this.autoReconnectInterval}ms`,e);
-	var that = this;
-	setTimeout(function(){
-		console.log("WebSocketClient: reconnecting...");
-		that.open(that.url);
-	},this.autoReconnectInterval);
-}
-WebSocketClient.prototype.onopen = function(e){	console.log("WebSocketClient: open",arguments);	}
-WebSocketClient.prototype.onmessage = function(data,flags,number){	console.log("WebSocketClient: message",arguments);	}
-WebSocketClient.prototype.onerror = function(e){	console.log("WebSocketClient: error",arguments);	}
-WebSocketClient.prototype.onclose = function(e){	console.log("WebSocketClient: closed",arguments);	}
+import { WebSocketClient } from "./libs/WebSocketClient";
 
 const sc2api = require("./messages/s2clientprotocol/sc2api_pb");
 const SC2PATH = env["SC2PATH"]; 
+
 const wsc = new WebSocketClient();
 
 export class SC2Node {
@@ -69,15 +15,14 @@ export class SC2Node {
     private ws;
 
     launchSC2() {
-        const sc2exe = SC2PATH || "C:/Program Files (x86)/Starcraft II/" 
+        const sc2exe = SC2PATH || "C:/Program Files (x86)/Starcraft II/"
+
         this.sc2 = spawn("../Versions/Base56787/SC2_x64.exe", ["-listen", "127.0.0.1", "-port", "8190", "-displayMode", "0"], {cwd: sc2exe + "/Support64"});
         
         this.sc2.on("error", (error) => console.error("SC2 error, ", error));
         this.sc2.on("close", (code) => console.log("SC2 closed with code, " + code));
         this.sc2.on("exit", (exit) => console.log("SC2 exited because, ", exit));
-    }
 
-    connectWebsocket() {
         wsc.open("ws://127.0.0.1:8190/sc2api");
 
         wsc.onopen((e) => console.log("Websocket opened to SC2", e));

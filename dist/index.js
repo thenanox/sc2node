@@ -70,8 +70,6 @@ class SC2Node {
         this.sc2.on("error", (error) => console.error("SC2 error, ", error));
         this.sc2.on("close", (code) => console.log("SC2 closed with code, " + code));
         this.sc2.on("exit", (exit) => console.log("SC2 exited because, ", exit));
-    }
-    connectWebsocket() {
         wsc.open("ws://127.0.0.1:8190/sc2api");
         wsc.onopen((e) => console.log("Websocket opened to SC2", e));
         wsc.onmessage((data) => {
